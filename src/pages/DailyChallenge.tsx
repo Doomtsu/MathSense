@@ -39,34 +39,31 @@ function DailyChallenge() {
 
   const fetchDailyChallenge = async () => {
     try {
-      setLoading(true);
+      // Check if we already have today's challenge
       const today = new Date().toISOString().split('T')[0];
-      const { data: existingChallenge, error: fetchError } = await supabase
+      const { data: existingChallenge } = await supabase
         .from('daily_challenges')
         .select('*')
         .eq('date', today)
         .single();
 
-      if (fetchError) throw fetchError;
-
       if (existingChallenge) {
         setQuestion(existingChallenge);
-        const { data: statsData, error: statsError } = await supabase
+        const { data: statsData } = await supabase
           .from('daily_challenge_stats')
           .select('attempts, best_time, solved_by')
           .eq('challenge_id', existingChallenge.id)
           .single();
-
-        if (statsError) throw statsError;
-
+        
         if (statsData) {
           setStats(statsData);
         }
       } else {
+        // Generate new challenge
         const questions = await generateQuestions(1, 'expert');
         const newQuestion = questions[0];
-
-        const { data: challenge, error: insertError } = await supabase
+        
+        const { data: challenge } = await supabase
           .from('daily_challenges')
           .insert([{
             date: today,
@@ -76,19 +73,15 @@ function DailyChallenge() {
           .select()
           .single();
 
-        if (insertError) throw insertError;
-
         if (challenge) {
           setQuestion(challenge);
-          const { error: statsInsertError } = await supabase
+          await supabase
             .from('daily_challenge_stats')
             .insert([{
               challenge_id: challenge.id,
               attempts: 0,
               solved_by: 0
             }]);
-
-          if (statsInsertError) throw statsInsertError;
         }
       }
     } catch (error) {
@@ -122,13 +115,12 @@ function DailyChallenge() {
     setIsActive(false);
 
     try {
-      const { data: currentStats, error: statsFetchError } = await supabase
+      // Update stats
+      const { data: currentStats } = await supabase
         .from('daily_challenge_stats')
         .select('*')
         .eq('challenge_id', question.id)
         .single();
-
-      if (statsFetchError) throw statsFetchError;
 
       if (currentStats) {
         const updates: any = {
@@ -142,12 +134,10 @@ function DailyChallenge() {
           }
         }
 
-        const { error: statsUpdateError } = await supabase
+        await supabase
           .from('daily_challenge_stats')
           .update(updates)
           .eq('challenge_id', question.id);
-
-        if (statsUpdateError) throw statsUpdateError;
 
         setStats(prev => ({
           ...prev,
@@ -159,7 +149,8 @@ function DailyChallenge() {
         }));
       }
 
-      const { error: attemptInsertError } = await supabase
+      // Record user attempt
+      await supabase
         .from('daily_challenge_attempts')
         .insert([{
           challenge_id: question.id,
@@ -167,8 +158,6 @@ function DailyChallenge() {
           time_taken: timeTaken,
           is_correct: correct
         }]);
-
-      if (attemptInsertError) throw attemptInsertError;
     } catch (error) {
       console.error('Error updating challenge stats:', error);
     }
